@@ -1,0 +1,42 @@
+# Managed PostgreSQL and Redis are external, private services. TLS terminates at your ingress.
+# Supply DATABASE_URL, REDIS_URL, provider keys, origins and metrics token using a secret manager.
+name: mars-production
+x-runtime: &runtime
+  image: ${BACKEND_IMAGE:?Use an immutable reviewed image digest}
+  env_file: ${MARS_SECRET_ENV_FILE:?Path to secret-manager-rendered environment file}
+  environment:
+    ENVIRONMENT: production
+  restart: unless-stopped
+  init: true
+  user: "10001:10001"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+services:
+  migrate:
+    <<: *runtime
+    command: [alembic, upgrade, head]
+    restart: "no"
+  api:
+    <<: *runtime
+    expose: ["8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 3
+  worker:
+    <<: *runtime
+    command: [python, -m, app.workers.run]
+    stop_grace_period: 20s
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  frontend:
+    image: ${FRONTEND_IMAGE:?Use an immutable reviewed image digest}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [api]
+    security_opt: ["no-new-privileges:true"]

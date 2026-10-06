@@ -1,0 +1,16 @@
+**/node_modules
+**/venv
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/dist
+**/.env
+.env.*
+!.env.example
+.git
+*.pdf
+**/*.db
+**/test-results
+**/.model-cache/

@@ -1,0 +1,33 @@
+name: Publish gated release
+on:
+  workflow_run:
+    workflows: [Quality gates]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ github.event.workflow_run.head_sha }}'}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish the checked commit
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          image="ghcr.io/${REPOSITORY,,}"
+          docker build -f backend/Dockerfile -t "$image-backend:$COMMIT" .
+          docker build -f frontend/Dockerfile -t "$image-frontend:$COMMIT" .
+          docker push "$image-backend:$COMMIT"
+          docker push "$image-frontend:$COMMIT"
+          echo "Published images for commit $COMMIT. Deploy their immutable digests with deploy/compose.production.yml." >> "$GITHUB_STEP_SUMMARY"
